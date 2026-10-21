@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""job-card-gate: rung-1 check that a PRD/spec cites a real job card and a growth-model driver.
+
+Usage:
+  job-card-gate <prd-or-spec.md>     check the doc's `Job card:` and `Driver:` header lines
+  job-card-gate --card <card.md>     check one card only
+
+Exit 0 = PASS, 1 = FAIL, 2 = usage. Refuses false passes: anything it cannot parse counts as missing.
+Thresholds live in skills/job-card/SKILL.md ("Rules that do not bend").
+"""
+import os
+import re
+import sys
+
+JOB_MIN_QUOTES, JOB_MIN_SOURCES, JOB_MIN_LEVEL, DEMAND_MIN_LEVEL = 3, 2, 3, 4
+SKIP_SECTIONS = ("Gate status", "Sources searched", "Probe next call", "Job statement")
+
+
+def card_rows(path):
+    """Yield (section, source_id, level) for every evidence row: a table row whose last cell is an integer."""
+    section = ""
+    for line in open(path, encoding="utf-8"):
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        if not line.startswith("|") or any(section.startswith(s) for s in SKIP_SECTIONS):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not cells[-1].isdigit() or not cells[-2]:
+            continue
+        yield section, cells[-2].split()[0], int(cells[-1])
+
+
+def check_card(path):
+    rows = list(card_rows(path))
+    job = [r for r in rows if r[2] >= JOB_MIN_LEVEL]
+    sources = {r[1] for r in job}
+    demand = [r for r in rows if r[0].startswith("H.") and r[2] >= DEMAND_MIN_LEVEL]
+    job_ok = len(job) >= JOB_MIN_QUOTES and len(sources) >= JOB_MIN_SOURCES
+    print(f"  job exists:    {'PASS' if job_ok else 'FAIL'}  {len(job)} quotes at level {JOB_MIN_LEVEL}+ from {len(sources)} source(s); need {JOB_MIN_QUOTES}+ from {JOB_MIN_SOURCES}+")
+    print(f"  demand exists: {'PASS' if demand else 'FAIL'}  {len(demand)} commitment signal(s) at level {DEMAND_MIN_LEVEL}+ in section H; need 1+")
+    return job_ok and bool(demand)
+
+
+def header(doc_text, key):
+    m = re.search(rf"^\**{key}:\**\s*`?([^`\n]+?)`?\s*$", doc_text, re.M | re.I)
+    return m.group(1).strip() if m else None
+
+
+def check_doc(path):
+    text = open(path, encoding="utf-8").read()
+    if re.search(r"^\**Job card waiver:\**\s*\S", text, re.M | re.I):
+        print("WAIVED: doc carries a `Job card waiver:` line. A human accepted the risk in writing.")
+        return True
+    card = header(text, "Job card")
+    if not card:
+        print("FAIL: no `Job card: <path>` line in the doc header.")
+        return False
+    card = os.path.expanduser(card)
+    if not os.path.isabs(card):
+        card = os.path.join(os.path.dirname(os.path.abspath(path)), card)
+    if not os.path.isfile(card):
+        print(f"FAIL: job card not found at {card}")
+        return False
+    print(f"card: {card}")
+    ok = check_card(card)
+    driver = header(text, "Driver")
+    model = os.path.join(os.path.dirname(os.path.dirname(card)), "growth-model.md")
+    if not driver:
+        print("  driver:        FAIL  no `Driver: <name>` line in the doc header")
+        ok = False
+    elif not os.path.isfile(model) or driver.lower() not in open(model, encoding="utf-8").read().lower():
+        print(f"  driver:        FAIL  \"{driver}\" not found in {model}")
+        ok = False
+    else:
+        print(f"  driver:        PASS  \"{driver}\" is in {model}")
+    return ok
+
+
+def main(argv):
+    if len(argv) == 3 and argv[1] == "--card":
+        print(f"card: {argv[2]}")
+        ok = check_card(argv[2])
+    elif len(argv) == 2:
+        ok = check_doc(argv[1])
+    else:
+        print(__doc__)
+        return 2
+    print("GATE:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
