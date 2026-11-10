@@ -6,8 +6,25 @@ Each rule exists because an agent shipped the wrong answer without it.
 
 ## Install
 
+Claude Code:
+
+```
+/plugin marketplace add robertmnyborg/claude-harness
+/plugin install analyst-rigor-skills@claude-harness
+```
+
+Codex, Cursor, and other agents that read `SKILL.md`, via the [skills CLI](https://skills.sh):
+
 ```bash
-git clone <this repo> analyst-rigor-skills
+npx skills add robertmnyborg/analyst-rigor-skills
+```
+
+`job-card` also calls the `job-card-gate` script, and the optional hook routes causal questions to `causal-claim`. For those, install by hand:
+
+### Manual install
+
+```bash
+git clone https://github.com/robertmnyborg/analyst-rigor-skills
 cp -R analyst-rigor-skills/skills/* ~/.claude/skills/
 cp analyst-rigor-skills/bin/job-card-gate ~/.local/bin/        # any directory on your PATH
 cp analyst-rigor-skills/hooks/causal-claim-router.sh ~/.claude/hooks/
